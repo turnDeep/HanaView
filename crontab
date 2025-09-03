@@ -1,7 +1,4 @@
-# 米国市場クローズ後のデータ取得（夏時間・冬時間考慮）
-# 夏時間（3月第2日曜〜11月第1日曜）: 日本時間 5:15 AM
-# 冬時間（11月第1日曜〜3月第2日曜）: 日本時間 6:15 AM
-15 5 * * 2-6 /app/backend/cron_job.sh >> /app/logs/cron.log 2>&1
-15 6 * * 2-6 /app/backend/cron_job.sh >> /app/logs/cron.log 2>&1
-# 週次レポート更新（月曜日朝6時）
-0 6 * * 1 /app/backend/cron_job.sh >> /app/logs/cron.log 2>&1
+# 米国市場クローズ後のデータ取得
+0 7 * * 2-6 /app/backend/cron_job.sh >> /app/logs/cron.log 2>&1
+# 週次レポート更新（月曜日朝7時）
+0 7 * * 1 /app/backend/cron_job.sh >> /app/logs/cron.log 2>&1
