@@ -8,7 +8,7 @@ load_dotenv()
 
 # OpenAI API設定
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-OPENAI_MODEL = 'gpt-4o-mini'
+OPENAI_MODEL = 'gpt-5-mini'
 
 # タイムゾーン設定
 TZ_JST = pytz.timezone('Asia/Tokyo')
