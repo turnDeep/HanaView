@@ -45,23 +45,24 @@ class MarketDataFetcher:
             async with async_playwright() as p:
                 browser = await p.chromium.launch(
                     headless=True,
-                    args=['--no-sandbox', '--disable-setuid-sandbox']
+                    args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
                 )
                 page = await browser.new_page(
                     viewport={'width': 1920, 'height': 1080}
                 )
                 
                 # ページを読み込み
-                await page.goto(url, wait_until='networkidle')
+                await page.goto(url, wait_until='domcontentloaded', timeout=30000)
                 await page.wait_for_timeout(wait_time)  # 追加の待機時間
                 
                 # 特定の要素を指定してスクリーンショット
                 if selector:
-                    element = await page.query_selector(selector)
-                    if element:
+                    try:
+                        element = page.locator(selector).first
+                        await element.wait_for(state='visible', timeout=10000)
                         screenshot = await element.screenshot()
-                    else:
-                        logger.warning(f"Selector {selector} not found, taking full page screenshot")
+                    except Exception as e:
+                        logger.warning(f"Selector {selector} not found: {e}, taking full page screenshot")
                         screenshot = await page.screenshot(full_page=False)
                 else:
                     screenshot = await page.screenshot(full_page=False)
