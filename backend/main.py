@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import json
 import os
 from datetime import datetime
@@ -17,12 +18,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 静的ファイルのマウント
-app.mount("/static", StaticFiles(directory="../frontend"), name="static")
+# 静的ファイルのマウント（css, js）
+app.mount("/css", StaticFiles(directory="../frontend/css"), name="css")
+app.mount("/js", StaticFiles(directory="../frontend/js"), name="js")
 
 @app.get("/")
-async def root():
-    return {"message": "Investment Dashboard API"}
+async def read_index():
+    """index.htmlを返す"""
+    return FileResponse('../frontend/index.html')
 
 @app.get("/api/data")
 async def get_market_data():

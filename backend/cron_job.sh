@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# 環境変数の読み込み
-export $(cat /app/.env | xargs)
-
 # ログディレクトリ
 LOG_DIR="/app/logs"
 mkdir -p $LOG_DIR
