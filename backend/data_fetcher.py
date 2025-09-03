@@ -202,30 +202,52 @@ class MarketDataFetcher:
     def fetch_economic_indicators(self):
         """経済指標カレンダーをみんかぶから取得"""
         try:
-            response = requests.get(MINKABU_INDICATORS_URL, impersonate="chrome110", timeout=30)
-            soup = BeautifulSoup(response.content, 'html.parser')
+            response = self.session.get(MINKABU_INDICATORS_URL, timeout=30)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.content, 'lxml')
             
             indicators = []
             
-            # 経済指標テーブルを探す
-            indicator_tables = soup.find_all('div', class_='indicator-table')
+            # 日付ごとにテーブルを処理
+            tables = soup.find_all('table', class_='tbl-border')
             
-            for table in indicator_tables:
-                rows = table.find_all('tr')
+            for table in tables:
+                caption = table.find('caption')
+                date = caption.text.strip() if caption else ''
+
+                rows = table.find_all('tr', attrs={'data_importance': True})
+
                 for row in rows:
-                    cols = row.find_all('td')
-                    if len(cols) >= 3:
+                    importance = int(row['data_importance'])
+
+                    # 重要度3以上のみ表示
+                    if importance >= 3:
+                        cols = row.find_all('td')
+
                         time = cols[0].text.strip()
-                        importance = len(cols[1].find_all('span', class_='star'))
+                        country = row['data_country']
                         name = cols[2].text.strip()
                         
-                        # 重要度2以上のみ表示
-                        if importance >= 2:
-                            indicators.append({
-                                'time': time,
-                                'name': name,
-                                'importance': importance
-                            })
+                        # 前回ドル円変動幅
+                        fluctuation_span = cols[4].find('span')
+                        previous_fluctuation = fluctuation_span.text.strip() if fluctuation_span else '---'
+
+                        # 前回・予想・結果
+                        previous_value = cols[5].text.strip()
+                        forecast = cols[6].text.strip()
+                        result = cols[7].text.strip()
+
+                        indicators.append({
+                            'date': date,
+                            'time': time,
+                            'country': country,
+                            'name': name,
+                            'importance': importance,
+                            'previous_fluctuation': previous_fluctuation,
+                            'previous_value': previous_value,
+                            'forecast': forecast,
+                            'result': result
+                        })
             
             self.data['indicators']['economic'] = indicators
             logger.info(f"Economic indicators fetched: {len(indicators)} items")
