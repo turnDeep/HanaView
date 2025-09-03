@@ -8,6 +8,12 @@ import pandas as pd
 import numpy as np
 from openai import OpenAI
 import pytz
+import asyncio
+from playwright.async_api import async_playwright
+import base64
+from PIL import Image
+import io
+import os
 from config import *
 
 # ログ設定
@@ -27,80 +33,99 @@ class MarketDataFetcher:
             'sp500_heatmap': {},
             'news': [],
             'indicators': {},
-            'column': {}
+            'column': {},
+            'screenshots': {}  # スクリーンショットデータを格納
         }
+        self.screenshots_dir = '../screenshots'
+        os.makedirs(self.screenshots_dir, exist_ok=True)
     
-    def fetch_fear_greed_index(self):
-        """Fear & Greed Indexを取得"""
+    async def capture_screenshot(self, url, selector=None, wait_time=3000):
+        """指定URLのスクリーンショットをキャプチャ"""
         try:
-            # CNN Fear & Greed APIから取得
-            end_date = datetime.now().strftime('%Y-%m-%d')
-            start_date = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
-            url = f"{CNN_FEAR_GREED_URL}{start_date}"
-            
-            response = requests.get(url, impersonate="chrome110", timeout=30)
-            data = response.json()
-            
-            # 最新データと履歴データを整理
-            fear_greed_data = data.get('fear_and_greed_historical', {}).get('data', [])
-            
-            if fear_greed_data:
-                # 現在の値
-                current = fear_greed_data[-1]
-                current_value = current['y']
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=['--no-sandbox', '--disable-setuid-sandbox']
+                )
+                page = await browser.new_page(
+                    viewport={'width': 1920, 'height': 1080}
+                )
                 
-                # 過去の値を計算
-                now = datetime.now()
-                prev_close = self._get_historical_value(fear_greed_data, 1)
-                week_ago = self._get_historical_value(fear_greed_data, 7)
-                month_ago = self._get_historical_value(fear_greed_data, 30)
-                year_ago = self._get_historical_value(fear_greed_data, 365)
+                # ページを読み込み
+                await page.goto(url, wait_until='networkidle')
+                await page.wait_for_timeout(wait_time)  # 追加の待機時間
                 
-                self.data['market']['fear_and_greed'] = {
-                    'now': round(current_value),
-                    'previous_close': round(prev_close) if prev_close else None,
-                    'prev_week': round(week_ago) if week_ago else None,
-                    'prev_month': round(month_ago) if month_ago else None,
-                    'prev_year': round(year_ago) if year_ago else None,
-                    'category': self._get_fear_greed_category(current_value)
-                }
-                logger.info(f"Fear & Greed Index fetched: {current_value}")
+                # 特定の要素を指定してスクリーンショット
+                if selector:
+                    element = await page.query_selector(selector)
+                    if element:
+                        screenshot = await element.screenshot()
+                    else:
+                        logger.warning(f"Selector {selector} not found, taking full page screenshot")
+                        screenshot = await page.screenshot(full_page=False)
+                else:
+                    screenshot = await page.screenshot(full_page=False)
+                
+                await browser.close()
+                
+                # Base64エンコード
+                screenshot_base64 = base64.b64encode(screenshot).decode('utf-8')
+                return screenshot_base64
+                
+        except Exception as e:
+            logger.error(f"Error capturing screenshot from {url}: {e}")
+            return None
+    
+    async def fetch_fear_greed_screenshot(self):
+        """Fear & Greed Indexのスクリーンショットを取得"""
+        try:
+            logger.info("Capturing Fear & Greed Index screenshot...")
+            screenshot = await self.capture_screenshot(
+                'https://edition.cnn.com/markets/fear-and-greed',
+                '.market-fng-gauge',  # Fear & Greedゲージのセレクター
+                wait_time=5000
+            )
+            
+            if screenshot:
+                self.data['screenshots']['fear_greed'] = screenshot
+                logger.info("Fear & Greed Index screenshot captured")
             
         except Exception as e:
-            logger.error(f"Error fetching Fear & Greed Index: {e}")
-            self.data['market']['fear_and_greed'] = {
-                'now': None,
-                'error': str(e)
+            logger.error(f"Error fetching Fear & Greed screenshot: {e}")
+    
+    async def fetch_finviz_heatmaps(self):
+        """FinvizからS&P500とNASDAQ100のヒートマップスクリーンショットを取得"""
+        heatmap_configs = {
+            'sp500': {
+                'day': 'https://finviz.com/map.ashx?t=sec',
+                'week': 'https://finviz.com/map.ashx?t=sec&st=w1',
+                'month': 'https://finviz.com/map.ashx?t=sec&st=w4'
+            },
+            'nasdaq100': {
+                'day': 'https://finviz.com/map.ashx?t=sec_ndx',
+                'week': 'https://finviz.com/map.ashx?t=sec_ndx&st=w1',
+                'month': 'https://finviz.com/map.ashx?t=sec_ndx&st=w4'
             }
-    
-    def _get_historical_value(self, data, days_ago):
-        """指定日前のデータを取得"""
-        target_timestamp = (datetime.now() - timedelta(days=days_ago)).timestamp() * 1000
+        }
         
-        # 最も近いタイムスタンプのデータを探す
-        closest_data = None
-        min_diff = float('inf')
-        
-        for item in data:
-            diff = abs(item['x'] - target_timestamp)
-            if diff < min_diff:
-                min_diff = diff
-                closest_data = item
-        
-        return closest_data['y'] if closest_data else None
-    
-    def _get_fear_greed_category(self, value):
-        """Fear & Greedのカテゴリを判定"""
-        if value <= 25:
-            return "Extreme Fear"
-        elif value <= 45:
-            return "Fear"
-        elif value <= 55:
-            return "Neutral"
-        elif value <= 75:
-            return "Greed"
-        else:
-            return "Extreme Greed"
+        for index_name, periods in heatmap_configs.items():
+            self.data['screenshots'][index_name] = {}
+            
+            for period, url in periods.items():
+                try:
+                    logger.info(f"Capturing {index_name} {period} heatmap...")
+                    screenshot = await self.capture_screenshot(
+                        url,
+                        'div.content',  # Finvizのメインコンテンツエリア
+                        wait_time=5000
+                    )
+                    
+                    if screenshot:
+                        self.data['screenshots'][index_name][period] = screenshot
+                        logger.info(f"{index_name} {period} heatmap captured")
+                        
+                except Exception as e:
+                    logger.error(f"Error capturing {index_name} {period} heatmap: {e}")
     
     def fetch_vix_data(self):
         """VIXデータを取得（4時間足）"""
@@ -159,148 +184,6 @@ class MarketDataFetcher:
             logger.error(f"Error fetching treasury yield: {e}")
             self.data['market']['us_10y_yield'] = {'error': str(e)}
     
-    def fetch_nasdaq_heatmap_data(self):
-        """NASDAQ 100のヒートマップデータを取得"""
-        try:
-            # NASDAQ 100の構成銘柄を取得
-            nasdaq100 = yf.Ticker("^NDX")
-            
-            # NASDAQ 100の主要構成銘柄（上位30銘柄）
-            nasdaq_symbols = [
-                'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'AVGO',
-                'ASML', 'COST', 'NFLX', 'AMD', 'PEP', 'ADBE', 'CSCO', 'INTC',
-                'CMCSA', 'TMUS', 'TXN', 'QCOM', 'AMGN', 'HON', 'INTU', 'AMAT',
-                'ISRG', 'VRTX', 'BKNG', 'SBUX', 'ADP', 'GILD', 'MU', 'ADI',
-                'LRCX', 'REGN', 'MDLZ', 'KLAC', 'SNPS', 'CDNS', 'PANW', 'MRVL'
-            ]
-            
-            heatmap_data = {
-                'type': 'contribution',
-                'day': [],
-                'week': [],
-                'month': []
-            }
-            
-            # 各銘柄のデータを取得
-            for symbol in nasdaq_symbols:
-                try:
-                    ticker = yf.Ticker(symbol)
-                    info = ticker.info
-                    hist = ticker.history(period="1mo")
-                    
-                    if not hist.empty:
-                        # パフォーマンス計算
-                        day_perf = ((hist['Close'].iloc[-1] - hist['Close'].iloc[-2]) / hist['Close'].iloc[-2] * 100) if len(hist) > 1 else 0
-                        week_perf = ((hist['Close'].iloc[-1] - hist['Close'].iloc[-5]) / hist['Close'].iloc[-5] * 100) if len(hist) > 5 else 0
-                        month_perf = ((hist['Close'].iloc[-1] - hist['Close'].iloc[0]) / hist['Close'].iloc[0] * 100)
-                        
-                        # 時価総額を取得
-                        market_cap = info.get('marketCap', 0)
-                        
-                        # ヒートマップデータに追加
-                        heatmap_data['day'].append({
-                            'ticker': symbol,
-                            'name': info.get('shortName', symbol),
-                            'sector': info.get('sector', 'Technology'),
-                            'performance': round(day_perf, 2),
-                            'market_cap': market_cap
-                        })
-                        
-                        heatmap_data['week'].append({
-                            'ticker': symbol,
-                            'performance': round(week_perf, 2)
-                        })
-                        
-                        heatmap_data['month'].append({
-                            'ticker': symbol,
-                            'performance': round(month_perf, 2)
-                        })
-                        
-                except Exception as e:
-                    logger.warning(f"Error fetching data for {symbol}: {e}")
-                    continue
-            
-            self.data['nasdaq_heatmap'] = heatmap_data
-            logger.info(f"NASDAQ heatmap data fetched for {len(nasdaq_symbols)} symbols")
-            
-        except Exception as e:
-            logger.error(f"Error fetching NASDAQ heatmap data: {e}")
-            self.data['nasdaq_heatmap'] = {'error': str(e)}
-    
-    def fetch_sp500_heatmap_data(self):
-        """S&P 500のヒートマップデータを取得"""
-        try:
-            # S&P 500の主要銘柄（各セクターの代表銘柄）
-            sp500_symbols = {
-                'Technology': ['AAPL', 'MSFT', 'NVDA', 'AVGO', 'ORCL', 'CRM', 'ADBE', 'CSCO'],
-                'Healthcare': ['LLY', 'UNH', 'JNJ', 'ABBV', 'MRK', 'PFE', 'TMO', 'ABT'],
-                'Financials': ['BRK-B', 'JPM', 'V', 'MA', 'BAC', 'WFC', 'GS', 'MS'],
-                'Consumer Discretionary': ['AMZN', 'TSLA', 'HD', 'MCD', 'NKE', 'SBUX', 'LOW', 'TJX'],
-                'Communication Services': ['GOOGL', 'META', 'NFLX', 'DIS', 'CMCSA', 'VZ', 'T', 'TMUS'],
-                'Industrials': ['BA', 'UNH', 'CAT', 'HON', 'UPS', 'RTX', 'GE', 'LMT'],
-                'Consumer Staples': ['PG', 'WMT', 'KO', 'PEP', 'COST', 'PM', 'CVS', 'MDLZ'],
-                'Energy': ['XOM', 'CVX', 'COP', 'SLB', 'EOG', 'MPC', 'PXD', 'VLO'],
-                'Utilities': ['NEE', 'SO', 'DUK', 'D', 'AEP', 'SRE', 'EXC', 'XEL'],
-                'Real Estate': ['PLD', 'AMT', 'CCI', 'EQIX', 'PSA', 'SPG', 'WELL', 'DLR'],
-                'Materials': ['LIN', 'APD', 'SHW', 'FCX', 'ECL', 'NUE', 'DD', 'NEM']
-            }
-            
-            heatmap_data = {
-                'type': 'performance',
-                'day': [],
-                'week': [],
-                'month': []
-            }
-            
-            # 各セクターの銘柄データを取得
-            for sector, symbols in sp500_symbols.items():
-                for symbol in symbols:
-                    try:
-                        ticker = yf.Ticker(symbol)
-                        info = ticker.info
-                        hist = ticker.history(period="1mo")
-                        
-                        if not hist.empty:
-                            # パフォーマンス計算
-                            day_perf = ((hist['Close'].iloc[-1] - hist['Close'].iloc[-2]) / hist['Close'].iloc[-2] * 100) if len(hist) > 1 else 0
-                            week_perf = ((hist['Close'].iloc[-1] - hist['Close'].iloc[-5]) / hist['Close'].iloc[-5] * 100) if len(hist) > 5 else 0
-                            month_perf = ((hist['Close'].iloc[-1] - hist['Close'].iloc[0]) / hist['Close'].iloc[0] * 100)
-                            
-                            # 時価総額を取得
-                            market_cap = info.get('marketCap', 0)
-                            
-                            # ヒートマップデータに追加
-                            heatmap_data['day'].append({
-                                'ticker': symbol,
-                                'name': info.get('shortName', symbol),
-                                'sector': sector,
-                                'performance': round(day_perf, 2),
-                                'market_cap': market_cap
-                            })
-                            
-                            heatmap_data['week'].append({
-                                'ticker': symbol,
-                                'sector': sector,
-                                'performance': round(week_perf, 2)
-                            })
-                            
-                            heatmap_data['month'].append({
-                                'ticker': symbol,
-                                'sector': sector,
-                                'performance': round(month_perf, 2)
-                            })
-                            
-                    except Exception as e:
-                        logger.warning(f"Error fetching data for {symbol}: {e}")
-                        continue
-            
-            self.data['sp500_heatmap'] = heatmap_data
-            logger.info(f"S&P 500 heatmap data fetched")
-            
-        except Exception as e:
-            logger.error(f"Error fetching S&P 500 heatmap data: {e}")
-            self.data['sp500_heatmap'] = {'error': str(e)}
-    
     def fetch_economic_indicators(self):
         """経済指標カレンダーをみんかぶから取得"""
         try:
@@ -339,7 +222,7 @@ class MarketDataFetcher:
     def fetch_news(self):
         """最新の米国株関連ニュースを取得"""
         try:
-            # Yahoo Financeからニュースを取得（例）
+            # Yahoo Financeからニュースを取得
             tickers = ['^GSPC', '^IXIC', '^DJI']  # S&P 500, NASDAQ, DOW
             news_items = []
             
@@ -373,16 +256,11 @@ class MarketDataFetcher:
     def generate_ai_commentary(self):
         """AIによる市況解説を生成"""
         try:
-            # プロンプト構築
+            # VIXと10年債利回りのデータからプロンプトを構築
             market_data = self.data['market']
             
             prompt = f"""
             以下の市場データを基に、日本の個人投資家向けに本日の米国市場の状況を簡潔に解説してください。
-
-            Fear & Greed Index: {market_data.get('fear_and_greed', {}).get('now', 'N/A')} ({market_data.get('fear_and_greed', {}).get('category', '')})
-            - 前日比: {market_data.get('fear_and_greed', {}).get('previous_close', 'N/A')}
-            - 1週間前: {market_data.get('fear_and_greed', {}).get('prev_week', 'N/A')}
-            - 1ヶ月前: {market_data.get('fear_and_greed', {}).get('prev_month', 'N/A')}
 
             VIX: {market_data.get('vix', {}).get('current', 'N/A')}
             米国10年債利回り: {market_data.get('us_10y_yield', {}).get('current', 'N/A')}%
@@ -468,15 +346,29 @@ class MarketDataFetcher:
         except Exception as e:
             logger.error(f"Error saving data: {e}")
     
+    async def fetch_all_async(self):
+        """非同期でスクリーンショットを取得"""
+        logger.info("Starting screenshot capture...")
+        
+        # スクリーンショット取得タスク
+        tasks = [
+            self.fetch_fear_greed_screenshot(),
+            self.fetch_finviz_heatmaps()
+        ]
+        
+        await asyncio.gather(*tasks)
+        logger.info("Screenshot capture completed")
+    
     def fetch_all(self):
         """全データを取得"""
         logger.info("Starting data fetch...")
         
-        self.fetch_fear_greed_index()
+        # 非同期タスクの実行（スクリーンショット取得）
+        asyncio.run(self.fetch_all_async())
+        
+        # 通常のデータ取得
         self.fetch_vix_data()
         self.fetch_treasury_yield()
-        self.fetch_nasdaq_heatmap_data()
-        self.fetch_sp500_heatmap_data()
         self.fetch_economic_indicators()
         self.fetch_news()
         self.generate_ai_commentary()
