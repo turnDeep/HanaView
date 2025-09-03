@@ -10,3 +10,5 @@ pytz==2023.3.post1
 python-dotenv==1.0.0
 httpx==0.25.2
 lxml==4.9.4
+playwright==1.40.0
+Pillow==10.1.0
