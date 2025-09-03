@@ -38,6 +38,9 @@ class MarketDataFetcher:
         }
         self.screenshots_dir = '../screenshots'
         os.makedirs(self.screenshots_dir, exist_ok=True)
+        
+        # curl_cffiセッションを作成（HWB-botと同じ方法）
+        self.session = requests.Session(impersonate="safari15_5")
     
     async def capture_screenshot(self, url, selector=None, wait_time=3000):
         """指定URLのスクリーンショットをキャプチャ"""
@@ -129,10 +132,11 @@ class MarketDataFetcher:
                     logger.error(f"Error capturing {index_name} {period} heatmap: {e}")
     
     def fetch_vix_data(self):
-        """VIXデータを取得（4時間足）"""
+        """VIXデータを取得（curl_cffiセッション使用）"""
         try:
-            ticker = yf.Ticker("^VIX")
-            # 過去5日分の4時間足データを取得
+            ticker = yf.Ticker("^VIX", session=self.session)
+            
+            # 過去5日分の1時間足データを取得
             hist = ticker.history(period="5d", interval="1h")
 
             if hist.empty: 
@@ -163,9 +167,9 @@ class MarketDataFetcher:
             self.data['market']['vix'] = {'error': str(e)}
     
     def fetch_treasury_yield(self):
-        """米国10年債利回りデータを取得（4時間足）"""
+        """米国10年債利回りデータを取得（curl_cffiセッション使用）"""
         try:
-            ticker = yf.Ticker("^TNX")
+            ticker = yf.Ticker("^TNX", session=self.session)
             hist = ticker.history(period="5d", interval="1h")
 
             if hist.empty: 
@@ -231,29 +235,31 @@ class MarketDataFetcher:
             self.data['indicators']['economic'] = []
     
     def fetch_news(self):
-        """最新の米国株関連ニュースを取得"""
+        """最新の米国株関連ニュースを取得（curl_cffiセッション使用）"""
         try:
             # Yahoo Financeからニュースを取得
             tickers = ['^GSPC', '^IXIC', '^DJI']  # S&P 500, NASDAQ, DOW
             news_items = []
             
             for ticker_symbol in tickers:
-                ticker = yf.Ticker(ticker_symbol)
+                # curl_cffiセッションを使用
+                ticker = yf.Ticker(ticker_symbol, session=self.session)
                 news = ticker.news
                 
-                for item in news[:3]:  # 各インデックスから上位3件
-                    news_items.append({
-                        'title': item.get('title', ''),
-                        'publisher': item.get('publisher', ''),
-                        'link': item.get('link', ''),
-                        'published': datetime.fromtimestamp(item.get('providerPublishTime', 0)).isoformat()
-                    })
+                if news:  # newsが空でないかチェック
+                    for item in news[:3]:  # 各インデックスから上位3件
+                        news_items.append({
+                            'title': item.get('title', ''),
+                            'publisher': item.get('publisher', ''),
+                            'link': item.get('link', ''),
+                            'published': datetime.fromtimestamp(item.get('providerPublishTime', 0)).isoformat()
+                        })
             
             # 重複を除去
             seen = set()
             unique_news = []
             for item in news_items:
-                if item['title'] not in seen:
+                if item['title'] not in seen and item['title']:  # タイトルが空でないことも確認
                     seen.add(item['title'])
                     unique_news.append(item)
             
@@ -265,16 +271,26 @@ class MarketDataFetcher:
             self.data['news'] = []
     
     def generate_ai_commentary(self):
-        """AIによる市況解説を生成"""
+        """AIによる市況解説を生成（max_completion_tokens使用）"""
         try:
             # VIXと10年債利回りのデータからプロンプトを構築
             market_data = self.data['market']
             
+            # データが取得できているか確認
+            vix_value = market_data.get('vix', {}).get('current', 'N/A')
+            yield_value = market_data.get('us_10y_yield', {}).get('current', 'N/A')
+            
+            # データが取得できていない場合はスキップ
+            if vix_value == 'N/A' and yield_value == 'N/A':
+                self.data['market']['ai_commentary'] = "市場データの取得に失敗したため、解説を生成できませんでした。"
+                logger.warning("No market data available for AI commentary")
+                return
+            
             prompt = f"""
             以下の市場データを基に、日本の個人投資家向けに本日の米国市場の状況を簡潔に解説してください。
 
-            VIX: {market_data.get('vix', {}).get('current', 'N/A')}
-            米国10年債利回り: {market_data.get('us_10y_yield', {}).get('current', 'N/A')}%
+            VIX: {vix_value}
+            米国10年債利回り: {yield_value}%
 
             以下の観点で150文字程度で解説してください：
             1. 現在の市場センチメント
@@ -288,7 +304,7 @@ class MarketDataFetcher:
                     {"role": "system", "content": "あなたは金融市場の専門家です。初心者にもわかりやすく、かつ的確な市場解説を提供してください。"},
                     {"role": "user", "content": prompt}
                 ],
-                max_completion_tokens=500, 
+                max_completion_tokens=500,  # max_tokensの代わりにmax_completion_tokensを使用
                 temperature=0.8
             )
             
@@ -300,7 +316,7 @@ class MarketDataFetcher:
             self.data['market']['ai_commentary'] = "市況解説の生成に失敗しました。"
     
     def generate_ai_column(self):
-        """AIによる週次コラムを生成"""
+        """AIによる週次コラムを生成（max_completion_tokens使用）"""
         try:
             # 週次レポート（月曜日更新）
             today = datetime.now(TZ_JST)
@@ -324,7 +340,7 @@ class MarketDataFetcher:
                         {"role": "system", "content": "あなたは経験豊富な投資アドバイザーです。"},
                         {"role": "user", "content": prompt}
                     ],
-                    max_tokens=500,
+                    max_completion_tokens=500,  # max_tokensの代わりにmax_completion_tokensを使用
                     temperature=0.8
                 )
                 
@@ -377,7 +393,7 @@ class MarketDataFetcher:
         # 非同期タスクの実行（スクリーンショット取得）
         asyncio.run(self.fetch_all_async())
         
-        # 通常のデータ取得
+        # 通常のデータ取得（curl_cffiセッションを使用）
         self.fetch_vix_data()
         self.fetch_treasury_yield()
         self.fetch_economic_indicators()
