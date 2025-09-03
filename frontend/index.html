@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>朝の5分市況チェック</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+    <div class="app">
+        <!-- ヘッダー -->
+        <header class="header">
+            <div class="header-content">
+                <h1>朝の5分市況チェック</h1>
+                <div class="update-time" id="updateTime"></div>
+            </div>
+        </header>
+
+        <!-- タブナビゲーション -->
+        <nav class="tab-nav">
+            <button class="tab-btn active" data-tab="market">
+                <span class="tab-icon">📊</span>
+                <span>市況</span>
+            </button>
+            <button class="tab-btn" data-tab="nasdaq">
+                <span class="tab-icon">💹</span>
+                <span>NASDAQ</span>
+            </button>
+            <button class="tab-btn" data-tab="sp500">
+                <span class="tab-icon">📈</span>
+                <span>S&P500</span>
+            </button>
+            <button class="tab-btn" data-tab="news">
+                <span class="tab-icon">📰</span>
+                <span>ニュース</span>
+            </button>
+            <button class="tab-btn" data-tab="indicators">
+                <span class="tab-icon">📅</span>
+                <span>指標</span>
+            </button>
+            <button class="tab-btn" data-tab="column">
+                <span class="tab-icon">📝</span>
+                <span>コラム</span>
+            </button>
+        </nav>
+
+        <!-- コンテンツエリア -->
+        <main class="content">
+            <!-- 市況タブ -->
+            <div class="tab-content active" id="market-tab">
+                <div class="market-overview">
+                    <!-- Fear & Greed Index -->
+                    <div class="card">
+                        <h2>Fear & Greed Index</h2>
+                        <div class="fear-greed-meter">
+                            <canvas id="fearGreedCanvas" width="300" height="150"></canvas>
+                            <div class="fear-greed-value" id="fearGreedValue"></div>
+                            <div class="fear-greed-history" id="fearGreedHistory"></div>
+                        </div>
+                    </div>
+
+                    <!-- VIX -->
+                    <div class="card">
+                        <h2>VIX</h2>
+                        <div id="vixChart" class="chart-container"></div>
+                    </div>
+
+                    <!-- 米国10年債利回り -->
+                    <div class="card">
+                        <h2>米国10年債利回り</h2>
+                        <div id="treasuryChart" class="chart-container"></div>
+                    </div>
+
+                    <!-- AI解説 -->
+                    <div class="card ai-commentary">
+                        <h2>AIによる市況解説</h2>
+                        <div id="aiCommentary"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- NASDAQタブ -->
+            <div class="tab-content" id="nasdaq-tab">
+                <div class="heatmap-container">
+                    <h2>NASDAQ 100 ヒートマップ</h2>
+                    <div class="period-selector">
+                        <button class="period-btn active" data-period="day">1日</button>
+                        <button class="period-btn" data-period="week">1週間</button>
+                        <button class="period-btn" data-period="month">1ヶ月</button>
+                    </div>
+                    <div id="nasdaqHeatmap" class="heatmap"></div>
+                </div>
+            </div>
+
+            <!-- S&P500タブ -->
+            <div class="tab-content" id="sp500-tab">
+                <div class="heatmap-container">
+                    <h2>S&P 500 ヒートマップ</h2>
+                    <div class="period-selector">
+                        <button class="period-btn active" data-period="day">1日</button>
+                        <button class="period-btn" data-period="week">1週間</button>
+                        <button class="period-btn" data-period="month">1ヶ月</button>
+                    </div>
+                    <div id="sp500Heatmap" class="heatmap"></div>
+                </div>
+            </div>
+
+            <!-- ニュースタブ -->
+            <div class="tab-content" id="news-tab">
+                <div class="news-container">
+                    <h2>今日のニュースと注目トピック</h2>
+                    <div id="newsList" class="news-list"></div>
+                </div>
+            </div>
+
+            <!-- 指標タブ -->
+            <div class="tab-content" id="indicators-tab">
+                <div class="indicators-container">
+                    <h2>本日の予定</h2>
+                    <div class="indicator-section">
+                        <h3>経済指標 予定</h3>
+                        <div id="economicIndicators"></div>
+                    </div>
+                    <div class="indicator-section">
+                        <h3>米国株 決算予定</h3>
+                        <div id="earningsUS"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- コラムタブ -->
+            <div class="tab-content" id="column-tab">
+                <div class="column-container">
+                    <h2>AIコラム</h2>
+                    <div id="columnContent"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
