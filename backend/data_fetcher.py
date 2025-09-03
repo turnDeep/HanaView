@@ -83,7 +83,7 @@ class MarketDataFetcher:
             logger.info("Capturing Fear & Greed Index screenshot...")
             screenshot = await self.capture_screenshot(
                 'https://edition.cnn.com/markets/fear-and-greed',
-                '.market-fng-gauge',  # Fear & Greedゲージのセレクター
+                "div[data-uri*='fearandgreed']",  # Fear & Greedゲージのセレクター
                 wait_time=5000
             )
             
@@ -117,7 +117,7 @@ class MarketDataFetcher:
                     logger.info(f"Capturing {index_name} {period} heatmap...")
                     screenshot = await self.capture_screenshot(
                         url,
-                        'div.content',  # Finvizのメインコンテンツエリア
+                        '#content',  # Finvizのメインコンテンツエリア
                         wait_time=5000
                     )
                     
@@ -134,6 +134,11 @@ class MarketDataFetcher:
             ticker = yf.Ticker("^VIX")
             # 過去5日分の4時間足データを取得
             hist = ticker.history(period="5d", interval="1h")
+
+            if hist.empty: 
+                logger.error("VIX data is empty.")
+                self.data['market']['vix'] = {'error': 'No data received from yfinance'}
+                return
             
             # 4時間足に変換
             four_hour_data = []
@@ -162,6 +167,11 @@ class MarketDataFetcher:
         try:
             ticker = yf.Ticker("^TNX")
             hist = ticker.history(period="5d", interval="1h")
+
+            if hist.empty: 
+                logger.error("Treasury yield data is empty.")
+                self.data['market']['us_10y_yield'] = {'error': 'No data received from yfinance'}
+                return
             
             # 4時間足に変換
             four_hour_data = []
@@ -278,8 +288,8 @@ class MarketDataFetcher:
                     {"role": "system", "content": "あなたは金融市場の専門家です。初心者にもわかりやすく、かつ的確な市場解説を提供してください。"},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=300,
-                temperature=0.7
+                max_completion_tokens=500, 
+                temperature=0.8
             )
             
             self.data['market']['ai_commentary'] = response.choices[0].message.content
