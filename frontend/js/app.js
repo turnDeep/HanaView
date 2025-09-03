@@ -4,7 +4,8 @@ class InvestmentDashboard {
         this.data = null;
         this.charts = {};
         this.currentTab = 'market';
-        this.currentPeriod = 'day';
+        this.currentNasdaqPeriod = 'day';
+        this.currentSP500Period = 'day';
         this.init();
     }
 
@@ -34,14 +35,6 @@ class InvestmentDashboard {
                 this.switchTab(tab);
             });
         });
-
-        // 期間切り替え
-        document.querySelectorAll('.period-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const period = btn.dataset.period;
-                this.switchPeriod(period);
-            });
-        });
     }
 
     switchTab(tab) {
@@ -59,16 +52,6 @@ class InvestmentDashboard {
 
         this.currentTab = tab;
         this.renderCurrentTab();
-    }
-
-    switchPeriod(period) {
-        document.querySelectorAll('.period-btn').forEach(btn => {
-            btn.classList.remove('active');
-        });
-        event.target.classList.add('active');
-
-        this.currentPeriod = period;
-        this.renderHeatmaps();
     }
 
     renderCurrentTab() {
@@ -97,8 +80,8 @@ class InvestmentDashboard {
     renderMarketTab() {
         if (!this.data || !this.data.market) return;
 
-        // Fear & Greed Index
-        this.renderFearGreedMeter();
+        // Fear & Greed Index スクリーンショット
+        this.renderFearGreedScreenshot();
 
         // VIXチャート
         this.renderVIXChart();
@@ -110,79 +93,35 @@ class InvestmentDashboard {
         this.renderAICommentary();
     }
 
-    renderFearGreedMeter() {
-        const fg = this.data.market.fear_and_greed;
-        if (!fg) return;
+    renderFearGreedScreenshot() {
+        const container = document.querySelector('.fear-greed-meter');
+        if (!container) return;
 
+        // Canvas要素を非表示にし、スクリーンショットを表示
         const canvas = document.getElementById('fearGreedCanvas');
-        const ctx = canvas.getContext('2d');
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height - 20;
-        const radius = 100;
-
-        // メーターの背景を描画
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // 色のグラデーション
-        const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
-        gradient.addColorStop(0, '#c62828');
-        gradient.addColorStop(0.25, '#ef5350');
-        gradient.addColorStop(0.5, '#9e9e9e');
-        gradient.addColorStop(0.75, '#66bb6a');
-        gradient.addColorStop(1, '#2e7d32');
-
-        // 半円の背景
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, radius, Math.PI, 0);
-        ctx.lineWidth = 20;
-        ctx.strokeStyle = gradient;
-        ctx.stroke();
-
-        // 現在値の針
-        const angle = Math.PI + (fg.now / 100) * Math.PI;
-        ctx.beginPath();
-        ctx.moveTo(centerX, centerY);
-        ctx.lineTo(
-            centerX + Math.cos(angle) * (radius - 25),
-            centerY + Math.sin(angle) * (radius - 25)
-        );
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = '#333';
-        ctx.stroke();
-
-        // 値を表示
-        document.getElementById('fearGreedValue').innerHTML = `
-            <div style="font-size: 3rem; color: ${this.getFGColor(fg.now)}">${fg.now}</div>
-            <div style="font-size: 1rem; color: #666">${fg.category}</div>
-        `;
-
-        // 履歴を表示
-        document.getElementById('fearGreedHistory').innerHTML = `
-            <div class="history-item">
-                <span>前日終値</span>
-                <span style="color: ${this.getFGColor(fg.previous_close)}">${fg.previous_close || 'N/A'}</span>
-            </div>
-            <div class="history-item">
-                <span>1週間前</span>
-                <span style="color: ${this.getFGColor(fg.prev_week)}">${fg.prev_week || 'N/A'}</span>
-            </div>
-            <div class="history-item">
-                <span>1ヶ月前</span>
-                <span style="color: ${this.getFGColor(fg.prev_month)}">${fg.prev_month || 'N/A'}</span>
-            </div>
-            <div class="history-item">
-                <span>1年前</span>
-                <span style="color: ${this.getFGColor(fg.prev_year)}">${fg.prev_year || 'N/A'}</span>
-            </div>
-        `;
-    }
-
-    getFGColor(value) {
-        if (value <= 25) return '#c62828';
-        if (value <= 45) return '#ef5350';
-        if (value <= 55) return '#9e9e9e';
-        if (value <= 75) return '#66bb6a';
-        return '#2e7d32';
+        if (canvas) canvas.style.display = 'none';
+        
+        const valueDiv = document.getElementById('fearGreedValue');
+        const historyDiv = document.getElementById('fearGreedHistory');
+        
+        if (this.data.screenshots && this.data.screenshots.fear_greed) {
+            // スクリーンショットを表示
+            if (valueDiv) {
+                valueDiv.innerHTML = `
+                    <img src="data:image/png;base64,${this.data.screenshots.fear_greed}" 
+                         alt="Fear & Greed Index" 
+                         style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                `;
+            }
+            // 履歴の表示は削除（スクリーンショットに含まれているため）
+            if (historyDiv) {
+                historyDiv.innerHTML = '';
+            }
+        } else {
+            if (valueDiv) {
+                valueDiv.innerHTML = '<p>Fear & Greed Indexを読み込み中...</p>';
+            }
+        }
     }
 
     renderVIXChart() {
@@ -233,6 +172,9 @@ class InvestmentDashboard {
             const currentValue = document.createElement('div');
             currentValue.className = 'current-value';
             currentValue.innerHTML = `現在値: <strong>${this.data.market.vix.current}</strong>`;
+            currentValue.style.marginTop = '10px';
+            currentValue.style.fontSize = '1.1rem';
+            currentValue.style.fontWeight = 'bold';
             container.appendChild(currentValue);
         }
     }
@@ -285,6 +227,9 @@ class InvestmentDashboard {
             const currentValue = document.createElement('div');
             currentValue.className = 'current-value';
             currentValue.innerHTML = `現在値: <strong>${this.data.market.us_10y_yield.current}%</strong>`;
+            currentValue.style.marginTop = '10px';
+            currentValue.style.fontSize = '1.1rem';
+            currentValue.style.fontWeight = 'bold';
             container.appendChild(currentValue);
         }
     }
@@ -301,91 +246,91 @@ class InvestmentDashboard {
     }
 
     renderNasdaqHeatmap() {
-        this.renderHeatmap('nasdaq', 'nasdaqHeatmap');
+        const container = document.getElementById('nasdaqHeatmap');
+        if (!container || !container.parentElement) return;
+
+        // 期間セレクターを追加（まだない場合）
+        let periodSelector = container.parentElement.querySelector('.period-selector');
+        if (!periodSelector) {
+            periodSelector = document.createElement('div');
+            periodSelector.className = 'period-selector';
+            periodSelector.innerHTML = `
+                <button class="period-btn ${this.currentNasdaqPeriod === 'day' ? 'active' : ''}" data-period="day" data-index="nasdaq">1日</button>
+                <button class="period-btn ${this.currentNasdaqPeriod === 'week' ? 'active' : ''}" data-period="week" data-index="nasdaq">1週間</button>
+                <button class="period-btn ${this.currentNasdaqPeriod === 'month' ? 'active' : ''}" data-period="month" data-index="nasdaq">1ヶ月</button>
+            `;
+            container.parentElement.insertBefore(periodSelector, container);
+
+            // イベントリスナーを追加
+            periodSelector.querySelectorAll('.period-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const period = btn.dataset.period;
+                    this.currentNasdaqPeriod = period;
+                    
+                    // ボタンのアクティブ状態を更新
+                    periodSelector.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    
+                    // ヒートマップを再描画
+                    this.renderNasdaqHeatmap();
+                });
+            });
+        }
+
+        // スクリーンショットを表示
+        if (this.data.screenshots && this.data.screenshots.nasdaq100 && this.data.screenshots.nasdaq100[this.currentNasdaqPeriod]) {
+            container.innerHTML = `
+                <img src="data:image/png;base64,${this.data.screenshots.nasdaq100[this.currentNasdaqPeriod]}" 
+                     alt="NASDAQ 100 Heatmap - ${this.currentNasdaqPeriod}" 
+                     style="max-width: 100%; height: auto; border-radius: 8px;">
+            `;
+        } else {
+            container.innerHTML = '<p>ヒートマップを読み込み中...</p>';
+        }
     }
 
     renderSP500Heatmap() {
-        this.renderHeatmap('sp500', 'sp500Heatmap');
-    }
+        const container = document.getElementById('sp500Heatmap');
+        if (!container || !container.parentElement) return;
 
-    renderHeatmap(index, containerId) {
-        const container = document.getElementById(containerId);
-        if (!container) return;
+        // 期間セレクターを追加（まだない場合）
+        let periodSelector = container.parentElement.querySelector('.period-selector');
+        if (!periodSelector) {
+            periodSelector = document.createElement('div');
+            periodSelector.className = 'period-selector';
+            periodSelector.innerHTML = `
+                <button class="period-btn ${this.currentSP500Period === 'day' ? 'active' : ''}" data-period="day" data-index="sp500">1日</button>
+                <button class="period-btn ${this.currentSP500Period === 'week' ? 'active' : ''}" data-period="week" data-index="sp500">1週間</button>
+                <button class="period-btn ${this.currentSP500Period === 'month' ? 'active' : ''}" data-period="month" data-index="sp500">1ヶ月</button>
+            `;
+            container.parentElement.insertBefore(periodSelector, container);
 
-        const heatmapData = index === 'nasdaq' ? 
-            this.data.nasdaq_heatmap : this.data.sp500_heatmap;
-
-        if (!heatmapData) return;
-
-        const periodData = heatmapData[this.currentPeriod];
-        if (!periodData) return;
-
-        // ヒートマップをクリア
-        container.innerHTML = '';
-
-        // セクターごとにグループ化（S&P 500の場合）
-        let sectors = {};
-        if (index === 'sp500') {
-            periodData.forEach(stock => {
-                if (!sectors[stock.sector]) {
-                    sectors[stock.sector] = [];
-                }
-                sectors[stock.sector].push(stock);
-            });
-
-            // セクターごとに表示
-            Object.keys(sectors).forEach(sector => {
-                const sectorDiv = document.createElement('div');
-                sectorDiv.className = 'sector-group';
-                sectorDiv.innerHTML = `<h4 style="margin: 12px 0; font-size: 0.9rem; color: #666;">${sector}</h4>`;
-                
-                const sectorHeatmap = document.createElement('div');
-                sectorHeatmap.className = 'heatmap';
-                
-                sectors[sector].forEach(stock => {
-                    sectorHeatmap.appendChild(this.createHeatmapCell(stock));
+            // イベントリスナーを追加
+            periodSelector.querySelectorAll('.period-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const period = btn.dataset.period;
+                    this.currentSP500Period = period;
+                    
+                    // ボタンのアクティブ状態を更新
+                    periodSelector.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    
+                    // ヒートマップを再描画
+                    this.renderSP500Heatmap();
                 });
-                
-                sectorDiv.appendChild(sectorHeatmap);
-                container.appendChild(sectorDiv);
             });
+        }
+
+        // スクリーンショットを表示
+        if (this.data.screenshots && this.data.screenshots.sp500 && this.data.screenshots.sp500[this.currentSP500Period]) {
+            container.innerHTML = `
+                <img src="data:image/png;base64,${this.data.screenshots.sp500[this.currentSP500Period]}" 
+                     alt="S&P 500 Heatmap - ${this.currentSP500Period}" 
+                     style="max-width: 100%; height: auto; border-radius: 8px;">
+            `;
         } else {
-            // NASDAQ（セクター分けなし）
-            periodData.forEach(stock => {
-                container.appendChild(this.createHeatmapCell(stock));
-            });
+            container.innerHTML = '<p>ヒートマップを読み込み中...</p>';
         }
-    }
-
-    createHeatmapCell(stock) {
-        const cell = document.createElement('div');
-        cell.className = `heatmap-cell ${this.getPerformanceClass(stock.performance)}`;
-        
-        // 時価総額に応じたサイズ調整
-        if (stock.market_cap) {
-            const scale = Math.log10(stock.market_cap / 1e9) / 3; // 10億ドル単位でログスケール
-            cell.style.transform = `scale(${Math.max(0.8, Math.min(1.2, scale))})`;
-        }
-        
-        cell.innerHTML = `
-            <div class="heatmap-ticker">${stock.ticker}</div>
-            <div class="heatmap-performance">${stock.performance > 0 ? '+' : ''}${stock.performance}%</div>
-        `;
-        
-        // ツールチップ
-        cell.title = `${stock.name || stock.ticker}: ${stock.performance > 0 ? '+' : ''}${stock.performance}%`;
-        
-        return cell;
-    }
-
-    getPerformanceClass(performance) {
-        if (performance >= 3) return 'performance-positive-high';
-        if (performance >= 1) return 'performance-positive-mid';
-        if (performance > 0) return 'performance-positive-low';
-        if (performance === 0) return 'performance-neutral';
-        if (performance > -1) return 'performance-negative-low';
-        if (performance > -3) return 'performance-negative-mid';
-        return 'performance-negative-high';
     }
 
     renderNews() {
