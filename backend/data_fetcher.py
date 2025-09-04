@@ -139,7 +139,7 @@ class MarketDataFetcher:
     def fetch_vix_data(self):
         """VIXデータを取得（curl_cffiセッション使用）"""
         try:
-            ticker = yf.Ticker("^VIX", session=self.session)
+            ticker = yf.Ticker("VX=F", session=self.session)
             
             # 過去5日分の1時間足データを取得
             hist = ticker.history(period="5d", interval="1h")
@@ -180,15 +180,15 @@ class MarketDataFetcher:
             logger.error(f"Error fetching VIX data: {e}")
             self.data['market']['vix'] = {'error': str(e)}
     
-    def fetch_treasury_yield(self):
-        """米国10年債利回りデータを取得（curl_cffiセッション使用）"""
+    def fetch_t_note_future(self):
+        """米国10年債先物（ZN=F）のデータを取得"""
         try:
-            ticker = yf.Ticker("^TNX", session=self.session)
+            ticker = yf.Ticker("ZN=F", session=self.session)
             hist = ticker.history(period="5d", interval="1h")
 
-            if hist.empty: 
-                logger.error("Treasury yield data is empty.")
-                self.data['market']['us_10y_yield'] = {'error': 'No data received from yfinance'}
+            if hist.empty:
+                logger.error("T-Note future data is empty.")
+                self.data['market']['t_note_future'] = {'error': 'No data received from yfinance'}
                 return
             
             # 4時間足にリサンプリング
@@ -212,15 +212,15 @@ class MarketDataFetcher:
                 for index, row in four_hour_hist.iterrows()
             ]
 
-            self.data['market']['us_10y_yield'] = {
+            self.data['market']['t_note_future'] = {
                 'current': float(hist['Close'].iloc[-1]),
                 'history': four_hour_data
             }
-            logger.info(f"10Y Treasury yield fetched: {self.data['market']['us_10y_yield']['current']}")
-            
+            logger.info(f"T-Note future fetched: {self.data['market']['t_note_future']['current']}")
+
         except Exception as e:
-            logger.error(f"Error fetching treasury yield: {e}")
-            self.data['market']['us_10y_yield'] = {'error': str(e)}
+            logger.error(f"Error fetching T-Note future: {e}")
+            self.data['market']['t_note_future'] = {'error': str(e)}
     
     def fetch_economic_indicators(self):
         """経済指標カレンダーをみんかぶから取得"""
@@ -318,15 +318,15 @@ class MarketDataFetcher:
     def generate_ai_commentary(self):
         """AIによる市況解説を生成（max_completion_tokens使用）"""
         try:
-            # VIXと10年債利回りのデータからプロンプトを構築
+            # VIXと10年債先物のデータからプロンプトを構築
             market_data = self.data['market']
             
             # データが取得できているか確認
             vix_value = market_data.get('vix', {}).get('current', 'N/A')
-            yield_value = market_data.get('us_10y_yield', {}).get('current', 'N/A')
+            t_note_value = market_data.get('t_note_future', {}).get('current', 'N/A')
             
             # データが取得できていない場合はスキップ
-            if vix_value == 'N/A' and yield_value == 'N/A':
+            if vix_value == 'N/A' and t_note_value == 'N/A':
                 self.data['market']['ai_commentary'] = "市場データの取得に失敗したため、解説を生成できませんでした。"
                 logger.warning("No market data available for AI commentary")
                 return
@@ -335,7 +335,7 @@ class MarketDataFetcher:
             以下の市場データを基に、日本の個人投資家向けに本日の米国市場の状況を簡潔に解説してください。
 
             VIX: {vix_value}
-            米国10年債利回り: {yield_value}%
+            米国10年債先物: {t_note_value}
 
             以下の観点で150文字程度で解説してください：
             1. 現在の市場センチメント
@@ -456,7 +456,7 @@ class MarketDataFetcher:
         """Fetches raw market data and saves to a temporary file."""
         logger.info("Starting raw data fetch...")
         self.fetch_vix_data()
-        self.fetch_treasury_yield()
+        self.fetch_t_note_future()
         self.fetch_economic_indicators()
         self.fetch_news()
         self.save_raw_data()
