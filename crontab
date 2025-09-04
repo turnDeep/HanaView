@@ -1,4 +1,4 @@
-# 米国市場クローズ後のデータ取得
-0 7 * * 2-6 /app/backend/cron_job.sh >> /app/logs/cron.log 2>&1
-# 週次レポート更新（月曜日朝7時）
-0 7 * * 1 /app/backend/cron_job.sh >> /app/logs/cron.log 2>&1
+# 6:30にデータを取得
+30 6 * * 1-6 /app/backend/cron_job.sh >> /app/logs/cron.log 2>&1
+# 7:00にレポートを生成
+0 7 * * 1-6 /app/backend/cron_job_generate.sh >> /app/logs/cron.log 2>&1

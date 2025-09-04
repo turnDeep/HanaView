@@ -15,6 +15,7 @@ import base64
 from PIL import Image
 import io
 import os
+import sys
 from config import *
 
 # ログ設定
@@ -148,17 +149,26 @@ class MarketDataFetcher:
                 self.data['market']['vix'] = {'error': 'No data received from yfinance'}
                 return
             
-            # 4時間足に変換
-            four_hour_data = []
-            for i in range(0, len(hist), 4):
-                if i + 3 < len(hist):
-                    four_hour_data.append({
-                        'time': hist.index[i].isoformat(),
-                        'open': float(hist['Open'].iloc[i]),
-                        'high': float(hist['High'].iloc[i:i+4].max()),
-                        'low': float(hist['Low'].iloc[i:i+4].min()),
-                        'close': float(hist['Close'].iloc[i+3])
-                    })
+            # 4時間足にリサンプリング
+            hist.index = pd.to_datetime(hist.index)
+            agg_rules = {
+                'Open': 'first',
+                'High': 'max',
+                'Low': 'min',
+                'Close': 'last'
+            }
+            four_hour_hist = hist.resample('4H', label='left', closed='left').agg(agg_rules).dropna()
+
+            four_hour_data = [
+                {
+                    'time': index.isoformat(),
+                    'open': float(row['Open']),
+                    'high': float(row['High']),
+                    'low': float(row['Low']),
+                    'close': float(row['Close'])
+                }
+                for index, row in four_hour_hist.iterrows()
+            ]
             
             self.data['market']['vix'] = {
                 'current': float(hist['Close'].iloc[-1]),
@@ -181,18 +191,27 @@ class MarketDataFetcher:
                 self.data['market']['us_10y_yield'] = {'error': 'No data received from yfinance'}
                 return
             
-            # 4時間足に変換
-            four_hour_data = []
-            for i in range(0, len(hist), 4):
-                if i + 3 < len(hist):
-                    four_hour_data.append({
-                        'time': hist.index[i].isoformat(),
-                        'open': float(hist['Open'].iloc[i]),
-                        'high': float(hist['High'].iloc[i:i+4].max()),
-                        'low': float(hist['Low'].iloc[i:i+4].min()),
-                        'close': float(hist['Close'].iloc[i+3])
-                    })
-            
+            # 4時間足にリサンプリング
+            hist.index = pd.to_datetime(hist.index)
+            agg_rules = {
+                'Open': 'first',
+                'High': 'max',
+                'Low': 'min',
+                'Close': 'last'
+            }
+            four_hour_hist = hist.resample('4H', label='left', closed='left').agg(agg_rules).dropna()
+
+            four_hour_data = [
+                {
+                    'time': index.isoformat(),
+                    'open': float(row['Open']),
+                    'high': float(row['High']),
+                    'low': float(row['Low']),
+                    'close': float(row['Close'])
+                }
+                for index, row in four_hour_hist.iterrows()
+            ]
+
             self.data['market']['us_10y_yield'] = {
                 'current': float(hist['Close'].iloc[-1]),
                 'history': four_hour_data
@@ -381,6 +400,27 @@ class MarketDataFetcher:
         except Exception as e:
             logger.error(f"Error generating AI column: {e}")
     
+    def save_raw_data(self):
+        """Saves intermediate data to a JSON file."""
+        raw_data_path = os.path.join(DATA_DIR, 'data_raw.json')
+        try:
+            with open(raw_data_path, 'w', encoding='utf-8') as f:
+                json.dump(self.data, f, ensure_ascii=False, indent=2)
+            logger.info(f"Raw data saved to {raw_data_path}")
+        except Exception as e:
+            logger.error(f"Error saving raw data: {e}")
+
+    def load_raw_data(self):
+        """Loads intermediate data from a JSON file."""
+        raw_data_path = os.path.join(DATA_DIR, 'data_raw.json')
+        try:
+            with open(raw_data_path, 'r', encoding='utf-8') as f:
+                self.data = json.load(f)
+            logger.info(f"Raw data loaded from {raw_data_path}")
+        except Exception as e:
+            logger.error(f"Error loading raw data: {e}")
+            raise
+
     def save_data(self):
         """データをJSON形式で保存"""
         try:
@@ -411,25 +451,46 @@ class MarketDataFetcher:
         
         await asyncio.gather(*tasks)
         logger.info("Screenshot capture completed")
-    
-    def fetch_all(self):
-        """全データを取得"""
-        logger.info("Starting data fetch...")
-        
-        # 非同期タスクの実行（スクリーンショット取得）
-        asyncio.run(self.fetch_all_async())
-        
-        # 通常のデータ取得（curl_cffiセッションを使用）
+
+    def fetch_raw_data(self):
+        """Fetches raw market data and saves to a temporary file."""
+        logger.info("Starting raw data fetch...")
         self.fetch_vix_data()
         self.fetch_treasury_yield()
         self.fetch_economic_indicators()
         self.fetch_news()
+        self.save_raw_data()
+        logger.info("Raw data fetch completed.")
+
+    async def generate_report_async(self):
+        """Loads raw data, generates reports and screenshots, and saves final data."""
+        logger.info("Starting report generation...")
+        self.load_raw_data()
+
+        # Update timestamp
+        self.data['last_updated'] = datetime.now(TZ_JST).isoformat()
+
+        # Fetch screenshots
+        await self.fetch_all_async()
+
+        # Generate AI content
         self.generate_ai_commentary()
         self.generate_ai_column()
-        self.save_data()
         
-        logger.info("Data fetch completed")
+        # Save final output
+        self.save_data()
+        logger.info("Report generation completed.")
+
 
 if __name__ == "__main__":
+    if len(sys.argv) != 2 or sys.argv[1] not in ['fetch', 'generate']:
+        print("Usage: python data_fetcher.py [fetch|generate]", file=sys.stderr)
+        sys.exit(1)
+
+    mode = sys.argv[1]
     fetcher = MarketDataFetcher()
-    fetcher.fetch_all()
+
+    if mode == 'fetch':
+        fetcher.fetch_raw_data()
+    elif mode == 'generate':
+        asyncio.run(fetcher.generate_report_async())
