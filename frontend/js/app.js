@@ -207,9 +207,9 @@ class InvestmentDashboard {
             wickDownColor: '#ef5350',
         });
 
-        // 10年債利回りデータをチャート用に変換
-        if (this.data.market.us_10y_yield && this.data.market.us_10y_yield.history) {
-            const chartData = this.data.market.us_10y_yield.history.map(item => ({
+        // 10年債先物データをチャート用に変換
+        if (this.data.market.t_note_future && this.data.market.t_note_future.history) {
+            const chartData = this.data.market.t_note_future.history.map(item => ({
                 time: new Date(item.time).getTime() / 1000,
                 open: item.open,
                 high: item.high,
@@ -223,10 +223,10 @@ class InvestmentDashboard {
         this.charts.treasury = chart;
 
         // 現在値を表示
-        if (this.data.market.us_10y_yield) {
+        if (this.data.market.t_note_future) {
             const currentValue = document.createElement('div');
             currentValue.className = 'current-value';
-            currentValue.innerHTML = `現在値: <strong>${this.data.market.us_10y_yield.current}%</strong>`;
+            currentValue.innerHTML = `現在値: <strong>${this.data.market.t_note_future.current}</strong>`;
             currentValue.style.marginTop = '10px';
             currentValue.style.fontSize = '1.1rem';
             currentValue.style.fontWeight = 'bold';
