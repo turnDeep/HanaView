@@ -10,6 +10,7 @@ from openai import OpenAI
 import pytz
 import asyncio
 from playwright.async_api import async_playwright
+from playwright_stealth import stealth_async
 import base64
 from PIL import Image
 import io
@@ -36,7 +37,7 @@ class MarketDataFetcher:
             'column': {},
             'screenshots': {}  # スクリーンショットデータを格納
         }
-        self.screenshots_dir = '../screenshots'
+        self.screenshots_dir = os.path.join(DATA_DIR, 'screenshots')
         os.makedirs(self.screenshots_dir, exist_ok=True)
         
         # curl_cffiセッションを作成（HWB-botと同じ方法）
@@ -54,6 +55,9 @@ class MarketDataFetcher:
                     viewport={'width': 1920, 'height': 1080}
                 )
                 
+                # ステルスモードを適用
+                await stealth_async(page)
+
                 # ページを読み込み
                 await page.goto(url, wait_until='domcontentloaded', timeout=30000)
                 await page.wait_for_timeout(wait_time)  # 追加の待機時間

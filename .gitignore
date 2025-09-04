@@ -1,0 +1,18 @@
+# Environments
+.env
+.env.*
+!/.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data and logs
+data/
+logs/
+screenshots/
+
+# IDE / Editor
+.vscode/
+.idea/
